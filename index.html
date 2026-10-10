@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8f2">
+  <meta name="description" content="タップで切り替える、集中のためのストップウォッチ。個別の時間と合計時間を、ひとつの画面で。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Switch Time">
+  <title>Switch Time — 集中を、切り替える。</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="header">
+      <a class="brand" href="./" aria-label="Switch Time ホーム"><span class="brand-icon" aria-hidden="true"><i></i><i></i></span><span>switch<span class="brand-light">time</span><small>集中を、切り替える。</small></span></a>
+      <nav class="tabs" aria-label="画面"><button class="tab selected" id="timer-tab" aria-current="page">タイマー</button><button class="tab" id="presets-tab">プリセット</button></nav>
+      <button class="icon-button help-button" id="help" aria-label="使い方とホーム画面への追加">?</button>
+    </header>
+    <main>
+      <section id="timer-view" aria-labelledby="page-title">
+        <div class="intro"><div><p class="eyebrow">MAKE ROOM FOR FOCUS</p><h1 id="page-title">ひとつずつ、集中しよう。</h1><p class="intro-sub">次のタスクをタップ。時間は、そのままつながる。</p></div><div class="session-label"><span class="tiny-label">いまのプリセット</span><button id="session-edit"><span id="session-title">読解トレーニング</span><span class="edit-glyph" aria-hidden="true">↗</span></button></div></div>
+        <section class="total-panel" aria-label="合計の計測時間">
+          <div class="total-top"><span class="total-label"><span class="total-icon" aria-hidden="true">◷</span>合計時間</span><span class="status" id="status"><i></i><span>開始待ち</span></span></div>
+          <div class="total-center"><div class="total-time" id="total-time"><span class="digits">00:00:00</span><span class="fraction">.0</span></div><p id="total-caption">あなたの集中を、ひとつの時間に。</p></div>
+          <div class="distribution" id="distribution" aria-hidden="true"></div>
+          <div class="total-bottom"><span>FOCUS SESSION</span><span id="task-count">2つのタイマーが連動</span></div>
+        </section>
+        <div class="section-title"><h2>フォーカスタイマー</h2><span><i class="mini-dot"></i>同時に動くのは、ひとつだけ</span></div>
+        <div id="timer-grid" class="timer-grid"></div>
+        <div class="controls"><button id="pause" class="pause-button"><span class="control-symbol" aria-hidden="true">Ⅱ</span><span>一時停止</span></button><button id="reset" class="secondary-button"><span aria-hidden="true">↺</span>リセット</button><div class="control-divider"></div><button id="edit" class="secondary-button"><span aria-hidden="true">☷</span>編集・追加</button><button id="save-preset" class="secondary-button"><span aria-hidden="true">＋</span>プリセットに保存</button></div>
+        <section class="rhythm-panel" aria-label="等間隔の通知音"><div class="rhythm-info"><span class="rhythm-icon" aria-hidden="true">♪</span><div><h2>リズム通知 <span id="rhythm-summary">1分ごと · トン</span></h2><p id="rhythm-caption">オンの間だけ、一定の間隔で音を鳴らす。</p></div></div><div class="rhythm-actions"><button id="interval-unlock" class="rhythm-unlock" hidden>音声を再開</button><button id="interval-toggle" class="rhythm-toggle" aria-pressed="false"><span class="wake-indicator"></span><span>オフ</span></button><button id="sound-settings" class="rhythm-settings" aria-label="通知音の設定">⚙&#xfe0e;</button></div></section>
+        <div class="session-footer"><p><span aria-hidden="true">↗</span> カードをタップして開始・切り替え。合計時間も自動で連動します。</p><button id="wake" aria-pressed="false"><span class="wake-indicator"></span>画面を保持</button></div>
+        <section class="breakdown" aria-label="時間配分"><div class="section-title"><h2>集中の内訳</h2><span id="breakdown-caption">時間の使い方が、見えてくる。</span></div><div id="breakdown-list"></div></section>
+      </section>
+      <section id="presets-view" hidden aria-labelledby="presets-title"><div class="intro"><div><p class="eyebrow">YOUR FOCUS, YOUR WAY</p><h1 id="presets-title">いつもの集中を、すぐに。</h1><p class="intro-sub">名前とタイマーの組み合わせを保存して、ワンタップで呼び出す。</p></div><button id="new-preset" class="pause-button">＋ 新しく作る</button></div><div class="section-title"><h2>保存したプリセット</h2><span>この端末に保存</span></div><div id="saved-presets" class="preset-grid"></div><div class="section-title preset-heading"><h2>おすすめの組み合わせ</h2><span>自分に合わせて編集できます</span></div><div id="built-in-presets" class="preset-grid"></div></section>
+    </main>
+    <footer class="footer"><span class="footer-mark">switchtime</span><span>A LITTLE SWITCH. A DEEPER FOCUS.</span><button id="install-footer">ホーム画面に追加 <span aria-hidden="true">↗</span></button></footer>
+  </div>
+  <dialog id="modal"><form id="modal-form"><div class="modal-header"><div><p class="eyebrow" id="modal-eyebrow">SWITCH TIME</p><h2 id="modal-title"></h2></div><button type="button" class="icon-button" id="modal-close" aria-label="閉じる">×</button></div><div id="modal-body"></div><div id="modal-actions" class="modal-actions"></div></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
