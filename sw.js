@@ -1,5 +1,5 @@
-const CACHE='switchtime-v2-rhythm';
-const ASSETS=['./','./index.html','./style.css','./app.mjs','./timer-engine.mjs','./interval-engine.mjs','./audio-player.mjs','./manifest.webmanifest','./icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable-512.png','./icons/apple-touch-icon.png'];
+const CACHE='switchtime-v3-background-speech';
+const ASSETS=['./','./index.html','./style.css','./app.mjs','./timer-engine.mjs','./interval-engine.mjs','./audio-player.mjs','./speech-engine.mjs','./speech-ui.mjs','./background-audio.mjs','./audio-worker.js','./vendor/lame.min.js','./audio/ja-times.json','./audio/ja-times.pcm.gz','./manifest.webmanifest','./icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable-512.png','./icons/apple-touch-icon.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('switchtime-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',event=>{
