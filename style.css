@@ -14,3 +14,5 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .rhythm-settings{display:grid;place-items:center}
+
+.output-mode-label{margin-top:23px}#audio-output-note{margin-bottom:23px}

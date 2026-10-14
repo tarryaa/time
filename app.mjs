@@ -31,7 +31,7 @@ function drawRhythm(){
   $('interval-toggle').setAttribute('aria-pressed',String(interval.enabled));
   $('interval-toggle').lastElementChild.textContent=interval.enabled?'オン':'オフ';
   $('interval-unlock').hidden=!interval.enabled||background.ready||background.preparing||soundEditorOpen;
-  $('rhythm-caption').textContent=!interval.enabled?'オンの間だけ、一定の間隔で音を鳴らす。':background.preparing?'ロック中も再生できる音声を準備しています…':!background.ready?'間隔は継続中。音声を再開するにはタップ。':interval.volume===0?'間隔は継続中。音量が0のため無音です。':`次の音まで ${Math.max(1,Math.ceil((nextAt(interval)-Date.now())/1000))}秒 · ロック中もメディア再生`;
+  $('rhythm-caption').textContent=!interval.enabled?'オンの間だけ、一定の間隔で音を鳴らす。':background.preparing?'音声を準備しています…':background.interrupted?'ほかの音声により中断中。音声を再開するにはタップ。':!background.ready?'間隔は継続中。音声を再開するにはタップ。':interval.volume===0?'間隔は継続中。音量が0のため無音です。':`次の音まで ${Math.max(1,Math.ceil((nextAt(interval)-Date.now())/1000))}秒 · ${background.mode==='mix'?'同時再生優先':'ロック優先'}`;
 }
 async function unlockAudio(){
   background.arm();
@@ -55,17 +55,17 @@ function openSoundSettings(){
   const units={seconds:1000,minutes:60000,hours:3600000};
   const amount=interval.intervalMs/units[unit];
   const options=Object.entries(soundNames).map(([id,name])=>`<button type="button" class="sound-choice${id===draftSound?' selected':''}" data-sound="${id}" aria-pressed="${id===draftSound}"><span aria-hidden="true">${{wood:'◒',bell:'♧',click:'·',beep:'∿',drop:'◌',custom:'＋'}[id]}</span>${name}</button>`).join('');
-  showModal('集中に、小さなリズムを。',`<label class="field-label" for="interval-amount">音を鳴らす間隔</label><div class="interval-inputs"><input type="number" inputmode="decimal" class="text-input" id="interval-amount" min="0.001" max="86400" step="any" required value="${amount}"><select id="interval-unit" class="text-input" aria-label="間隔の単位"><option value="seconds" ${unit==='seconds'?'selected':''}>秒ごと</option><option value="minutes" ${unit==='minutes'?'selected':''}>分ごと</option><option value="hours" ${unit==='hours'?'selected':''}>時間ごと</option></select></div><div class="interval-shortcuts">${[10,30,60,300,900].map(sec=>`<button type="button" data-seconds="${sec}">${intervalLabel(sec*1000)}</button>`).join('')}</div><label class="field-label" for="sound-volume">音量 <span id="volume-value">${interval.volume}%</span></label><input type="range" id="sound-volume" min="0" max="100" value="${interval.volume}" aria-label="通知音の音量"><p class="volume-note">端末本体の音量設定も反映されます。</p><span class="field-label sound-label">通知音</span><div class="sound-choices">${options}</div><div id="custom-sound-field" ${draftSound==='custom'?'':'hidden'}><label class="file-picker">音声ファイルを選ぶ<input type="file" id="sound-file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac"></label><p id="custom-file-name" class="volume-note">${escape(savedCustom?.name||'MP3・WAVなど、10MBまで。先頭3秒を使用します。')}</p></div><button type="button" class="preview-sound" id="preview-sound"><span aria-hidden="true">▷</span> この音を試す</button><div class="sound-route-note"><strong>音声は端末の出力先に従います</strong><br>イヤホン接続時は通常イヤホンから聞こえますが、外すとスピーカーへ切り替わる場合があります。イヤホン限定の保証はできません。</div><p class="editor-hint">通知音は専用ボタンでオンにした間だけ。ストップウォッチの停止とは独立して動きます。画面ロック中はメディア再生を継続します。完全終了した間の通知は後から鳴らしません。バイブは使用しません。</p>`,actions('設定を保存'),async()=>{
+  showModal('集中に、小さなリズムを。',`<label class="field-label" for="interval-amount">音を鳴らす間隔</label><div class="interval-inputs"><input type="number" inputmode="decimal" class="text-input" id="interval-amount" min="0.001" max="86400" step="any" required value="${amount}"><select id="interval-unit" class="text-input" aria-label="間隔の単位"><option value="seconds" ${unit==='seconds'?'selected':''}>秒ごと</option><option value="minutes" ${unit==='minutes'?'selected':''}>分ごと</option><option value="hours" ${unit==='hours'?'selected':''}>時間ごと</option></select></div><div class="interval-shortcuts">${[10,30,60,300,900].map(sec=>`<button type="button" data-seconds="${sec}">${intervalLabel(sec*1000)}</button>`).join('')}</div>${background.outputSettings()}<label class="field-label" for="sound-volume">音量 <span id="volume-value">${interval.volume}%</span></label><input type="range" id="sound-volume" min="0" max="100" value="${interval.volume}" aria-label="通知音の音量"><p class="volume-note">端末本体の音量設定も反映されます。</p><span class="field-label sound-label">通知音</span><div class="sound-choices">${options}</div><div id="custom-sound-field" ${draftSound==='custom'?'':'hidden'}><label class="file-picker">音声ファイルを選ぶ<input type="file" id="sound-file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac"></label><p id="custom-file-name" class="volume-note">${escape(savedCustom?.name||'MP3・WAVなど、10MBまで。先頭3秒を使用します。')}</p></div><button type="button" class="preview-sound" id="preview-sound"><span aria-hidden="true">▷</span> この音を試す</button><div class="sound-route-note"><strong>音声は端末の出力先に従います</strong><br>イヤホン接続時は通常イヤホンから聞こえますが、外すとスピーカーへ切り替わる場合があります。イヤホン限定の保証はできません。</div><p class="editor-hint">通知音は専用ボタンでオンにした間だけ。ストップウォッチの停止とは独立して動きます。画面ロックや同時再生の動作は再生方式により異なります。完全終了した間の通知は後から鳴らしません。バイブは使用しません。</p>`,actions('設定を保存'),async()=>{
     const ms=Math.round(Number($('interval-amount').value)*units[$('interval-unit').value]);
     if(!Number.isFinite(ms)||ms<1000||ms>86400000){toast('間隔は1秒〜24時間の範囲で設定してください');return;}
     if(draftSound==='custom'&&!draftFile&&!savedCustom){toast('音声ファイルを選んでください');return;}
     if(draftFile){try{await saveCustom(draftFile.blob,draftFile.name);savedCustom=draftFile;}catch{toast('音声ファイルを保存できませんでした');return;}}
     if(ms!==interval.intervalMs){interval.intervalMs=ms;if(interval.enabled)interval.anchor=Date.now();}
-    interval.volume=Number($('sound-volume').value);interval.sound=draftSound;
+    background.setMode($('audio-output-mode').value);interval.volume=Number($('sound-volume').value);interval.sound=draftSound;
     audio.customBuffer=null;
     clock.reset(interval);persistInterval();$('modal').close();if(interval.enabled)unlockAudio();drawRhythm();toast('通知音の設定を保存しました');
   });
-  soundEditorOpen=true;drawRhythm();
+  soundEditorOpen=true;drawRhythm();background.bindOutputSettings();
   background.hold(true);
   $('sound-volume').addEventListener('input',()=>$('volume-value').textContent=`${$('sound-volume').value}%`);
   $('modal-body').addEventListener('click',function settingsClick(e){
@@ -80,7 +80,7 @@ function openSoundSettings(){
     catch{toast('この音声ファイルを読み込めませんでした');}
   });
   $('preview-sound').addEventListener('click',async()=>{
-    speechUI?.cancel();
+    speechUI?.cancel();background.applyMode($('audio-output-mode').value);
     try{await audio.unlock();if(draftSound==='custom'){const custom=draftFile||savedCustom;if(!custom){toast('音声ファイルを選んでください');return;}await audio.setCustom(custom.blob,custom.name);}audio.play(draftSound,Number($('sound-volume').value));}
     catch{toast('音を再生できませんでした');}
   });
