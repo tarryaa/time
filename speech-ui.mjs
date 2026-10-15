@@ -1,59 +1,54 @@
-import {speechDefaults,validSpeech,startSpeech,stopSpeech,resetSpeech,speechElapsed,speechRemaining,durationText,SpeechClock} from './speech-engine.mjs';
+import {speechDefaults,validSpeech,startSpeech,stopSpeech,resetSpeech,speechElapsed,speechRemaining,durationText} from './speech-engine.mjs';
+import {RecordedSpeech,normalizeRecordedSettings,RECORD_INTERVALS} from './recorded-speech.mjs';
 import {timeParts} from './timer-engine.mjs';
 const KEY='switchtime-speech-v1';
-const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function mountSpeech({toast,showModal,actions,audio,background}){
+export function mountSpeech({toast,showModal,actions,audio}){
   const $=id=>document.getElementById(id);
-  let settings=speechDefaults(),editing=false,lastSpoken='',settingsAbort;
+  let settings=speechDefaults(),editing=false;
   try{const saved=JSON.parse(localStorage.getItem(KEY));if(validSpeech(saved))settings=saved;}catch{}
-  const clock=new SpeechClock(settings);
+  settings=normalizeRecordedSettings(settings);
+  const player=new RecordedSpeech(audio,{onState:()=>draw(),onError:message=>toast(message)});
   function save(){try{localStorage.setItem(KEY,JSON.stringify(settings));}catch{toast('読み上げの設定を保存できませんでした');}}
+  save();
   function draw(){
-    const ms=speechElapsed(settings),parts=timeParts(ms);
+    const elapsed=speechElapsed(settings),parts=timeParts(elapsed);
     $('speech-time').textContent=parts.main;
-    $('speech-summary').textContent=`${durationText(settings.intervalMs)}ごと · ${background.mode==='mix'?'同時再生優先':'ロック優先'}`;
-    $('speech-start').textContent=settings.accumulated?'再開':'開始';
-    $('speech-start').hidden=settings.running;
-    $('speech-stop').disabled=!settings.running;
-    $('speech-reset').disabled=!settings.running&&!settings.accumulated;
-    $('speech-unlock').hidden=!settings.running||background.ready||background.preparing||editing;
+    $('speech-summary').textContent=`${durationText(settings.intervalMs)}ごと · 録音音声`;
+    $('speech-start').textContent=settings.accumulated?'再開':'開始';$('speech-start').hidden=settings.running;
+    $('speech-stop').disabled=!settings.running;$('speech-reset').disabled=!settings.running&&!settings.accumulated;
+    $('speech-unlock').hidden=!settings.running||player.ready||player.preparing||editing;
     $('speech-panel').classList.toggle('on',settings.running);
-    $('speech-caption').textContent=!settings.running?(ms?'停止中。再開すると続きから計測します。':'開始からの経過時間を、日本語でお知らせ。'):background.preparing?'音声を準備しています…':background.interrupted?'ほかの音声により中断中。音声を再開するにはタップ。':!background.ready?'時間は継続中。音声を再開するにはタップ。':settings.volume===0?'音量0のため無音です。':`次は「${durationText((Math.floor(ms/settings.intervalMs)+1)*settings.intervalMs)}」 · あと${Math.max(1,Math.ceil(speechRemaining(settings)/1000))}秒`;
-    lastSpoken=settings.running||settings.accumulated?(background.lastSpoken||lastSpoken):'';
-    $('speech-last').textContent=lastSpoken?`前回の読み上げ：${lastSpoken}`:'ストップウォッチとは独立して計測します。';
+    $('speech-caption').textContent=!settings.running?(elapsed?'停止中。再開すると続きから計測します。':'5分、10分、15分…を、短い録音音声で。'):player.preparing?'音声を準備しています…':!player.ready?'時間は継続中。音声を再開するにはタップ。':settings.volume===0?'音量0のため無音です。':`次は「${durationText((Math.floor(elapsed/settings.intervalMs)+1)*settings.intervalMs)}」 · あと${Math.max(1,Math.ceil(speechRemaining(settings)/1000))}秒`;
+    const last=player.lastSpoken;$('speech-last').textContent=last?`前回の読み上げ：${last}`:'ストップウォッチとは独立して計測。開いている間だけ読み上げます。';
   }
-  $('speech-start').addEventListener('click',()=>{
-    background.arm();startSpeech(settings);clock.skip();save();background.setSpeech(settings);draw();
-  });
-  $('speech-stop').addEventListener('click',()=>{stopSpeech(settings);save();background.setSpeech(settings);draw();});
-  $('speech-unlock').addEventListener('click',()=>{background.arm();clock.skip();background.setSpeech(settings);draw();});
-  $('speech-reset').addEventListener('click',()=>{resetSpeech(settings);lastSpoken='';clock.skip();save();background.setSpeech(settings);draw();toast('読み上げの経過時間をリセットしました');});
+  async function arm(){
+    try{await player.unlock();await player.schedule(settings);}
+    catch{toast('音声を開始できませんでした。「音声を再開」を押してください。');}
+    draw();
+  }
+  $('speech-start').addEventListener('click',()=>{startSpeech(settings);save();arm();draw();});
+  function stop(){stopSpeech(settings);player.schedule(settings);save();draw();}
+  $('speech-stop').addEventListener('click',stop);
+  $('speech-unlock').addEventListener('click',arm);
+  $('speech-reset').addEventListener('click',()=>{resetSpeech(settings);player.cancel({clearLast:true});player.schedule(settings);save();draw();toast('読み上げの経過時間をリセットしました');});
   function openSettings(){
-    settingsAbort?.abort();settingsAbort=new AbortController();
-    const units={seconds:1000,minutes:60000,hours:3600000};
-    const unit=settings.intervalMs%3600000===0?'hours':settings.intervalMs%60000===0?'minutes':'seconds';
-    showModal('経過時間を、耳で知る。',`<label class="field-label" for="speech-amount">読み上げる間隔</label><div class="interval-inputs"><input type="number" inputmode="decimal" class="text-input" id="speech-amount" min="0.001" max="86400" step="any" required value="${settings.intervalMs/units[unit]}"><select id="speech-unit" class="text-input" aria-label="読み上げ間隔の単位"><option value="seconds" ${unit==='seconds'?'selected':''}>秒ごと</option><option value="minutes" ${unit==='minutes'?'selected':''}>分ごと</option><option value="hours" ${unit==='hours'?'selected':''}>時間ごと</option></select></div><p class="speech-example" id="speech-example"></p><div class="interval-shortcuts">${[10,30,60,300,600].map(sec=>`<button type="button" data-speech-seconds="${sec}">${durationText(sec*1000)}</button>`).join('')}</div>${background.outputSettings()}<label class="field-label" for="speech-volume">読み上げの音量 <span id="speech-volume-value">${settings.volume}%</span></label><input type="range" id="speech-volume" min="0" max="100" value="${settings.volume}"><p class="volume-note">端末本体の音量設定も反映されます。</p><label class="field-label" for="speech-rate">読み上げの速さ</label><select id="speech-rate" class="text-input">${[.75,1,1.25,1.5].map(rate=>`<option value="${rate}" ${settings.rate===rate?'selected':''}>${rate===1?'標準':`${rate}倍`}</option>`).join('')}</select><p class="volume-note">時間は日本語で読み上げます。</p><button type="button" class="preview-sound" id="speech-preview">▷ 「1時間5分」を試聴</button><div class="sound-route-note"><strong>音声は端末の出力先に従います</strong><br>イヤホン接続の検知は行いません。同時再生の可否は端末・OSと相手のアプリにも左右されます。ロック中の動作は再生方式により異なります。アプリの完全終了やOSによる再生停止には対応できません。</div><p class="editor-hint">開始からの経過時間を読み上げます。ストップで時間と声が止まり、再開で続きから。間隔を変更しても経過時間は残ります。声が長い場合は次の読み上げをスキップし、重ねません。</p>`,actions('設定を保存'),()=>{
-      const ms=Math.round(Number($('speech-amount').value)*units[$('speech-unit').value]/1000)*1000;
-      if(!Number.isFinite(ms)||ms<1000||ms>86400000){toast('間隔は1秒〜24時間で設定してください');return;}
-      background.setMode($('audio-output-mode').value);settings.intervalMs=ms;settings.volume=Number($('speech-volume').value);settings.rate=Number($('speech-rate').value);settings.voiceURI='';
-      background.stopPreview();clock.skip();save();background.setSpeech(settings);$('modal').close();draw();toast('読み上げの設定を保存しました');
+    showModal('普通の声で、そっとお知らせ。',`<label class="field-label" for="speech-record-interval">読み上げる間隔</label><select class="text-input" id="speech-record-interval">${RECORD_INTERVALS.map(ms=>`<option value="${ms}" ${settings.intervalMs===ms?'selected':''}>${durationText(ms)}ごと</option>`).join('')}</select><p class="speech-example" id="speech-example"></p><p class="volume-note">「5分」「10分」「15分」など、それぞれ録音した普通の日本語音声を短く鳴らします。</p><label class="field-label" for="speech-volume">読み上げの音量 <span id="speech-volume-value">${settings.volume}%</span></label><input type="range" id="speech-volume" min="0" max="100" value="${settings.volume}"><p class="volume-note">端末本体の音量設定も反映されます。声の高さ・速さは標準です。</p><div class="speech-preview-buttons"><button type="button" class="preview-sound" data-record-preview="300000">▷ 「5分」を試聴</button><button type="button" class="preview-sound" data-record-preview="3900000">▷ 「1時間5分」を試聴</button></div><div class="sound-route-note"><strong>音楽・動画との同時再生を優先します</strong><br>長い無音の音声ファイルは再生せず、必要な時刻に短い録音を効果音として鳴らします。iPhone・iPadでは消音モードを解除してください。アプリを開いている間だけ鳴ります。画面ロック中や別アプリを表示中は無音です。</div><p class="editor-hint">開始からの経過時間をお知らせします。ストップで声と時間を停止し、再開で続きから。間隔は5・10・15・30分・1時間から選べます。音楽やYouTubeとの実機での同時再生は未検証です。</p>`,actions('設定を保存'),()=>{
+      settings.intervalMs=Number($('speech-record-interval').value);settings.volume=Number($('speech-volume').value);settings.rate=1;
+      save();$('modal').close();toast('読み上げの設定を保存しました');
     });
-    editing=true;background.hold(true);draw();
-    function example(){const ms=Math.round(Number($('speech-amount').value)*units[$('speech-unit').value]/1000)*1000;$('speech-example').textContent=ms>=1000&&ms<=86400000?`${durationText(ms)} … ${durationText(ms*2)} … ${durationText(ms*3)}`:'間隔は1秒〜24時間で設定できます。';}
-    example();background.bindOutputSettings();
-    $('speech-amount').addEventListener('input',example);$('speech-unit').addEventListener('change',example);
-    $('modal-body').addEventListener('click',e=>{const quick=e.target.closest('[data-speech-seconds]');if(!quick)return;const sec=Number(quick.dataset.speechSeconds);$('speech-unit').value=sec%60===0?'minutes':'seconds';$('speech-amount').value=sec%60===0?sec/60:sec;example();},{signal:settingsAbort.signal});
+    editing=true;player.hold(true);draw();
+    function example(){const ms=Number($('speech-record-interval').value);$('speech-example').textContent=`${durationText(ms)} … ${durationText(ms*2)} … ${durationText(ms*3)}`;}
+    example();$('speech-record-interval').addEventListener('change',example);
     $('speech-volume').addEventListener('input',()=>$('speech-volume-value').textContent=`${$('speech-volume').value}%`);
-    $('speech-preview').addEventListener('click',()=>{audio.stop();background.preview(3900000,{volume:Number($('speech-volume').value),rate:Number($('speech-rate').value)},$('audio-output-mode').value);});
+    document.querySelectorAll('[data-record-preview]').forEach(button=>button.addEventListener('click',async()=>{audio.stop();const label=button.textContent;button.disabled=true;button.textContent='音声を準備しています…';try{await player.preview(Number(button.dataset.recordPreview),Number($('speech-volume').value));}finally{button.disabled=false;button.textContent=label;}}));
   }
   $('speech-settings').addEventListener('click',openSettings);
-  $('modal').addEventListener('close',()=>{if(editing){editing=false;settingsAbort?.abort();background.stopPreview();background.hold(false);clock.skip();draw();}});
-  document.addEventListener('visibilitychange',()=>{clock.skip();draw();});
-  window.addEventListener('pageshow',()=>{clock.skip();draw();});
-  window.addEventListener('storage',e=>{if(e.key!==KEY)return;try{const saved=JSON.parse(e.newValue);if(validSpeech(saved)){settings=saved;clock.reset(settings);background.setSpeech(settings);draw();}}catch{}});
-  setInterval(()=>{
-    if(!document.hidden)draw();
-  },100);
-  background.setSpeech(settings);draw();
-  return {busy:()=>false,cancel:()=>background.stopPreview(),draw,stopFromMedia:()=>{stopSpeech(settings);save();background.setSpeech(settings);draw();}};
+  $('modal').addEventListener('close',()=>{if(editing){editing=false;player.cancel();player.settings={...settings};player.hold(false);draw();}});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)player.cancel();else if(settings.running&&!editing&&player.armed)arm();draw();});
+  window.addEventListener('pagehide',()=>player.cancel());
+  window.addEventListener('pageshow',()=>{if(settings.running&&player.ready&&!editing)player.schedule(settings);draw();});
+  window.addEventListener('storage',event=>{if(event.key!==KEY)return;try{const saved=JSON.parse(event.newValue);if(validSpeech(saved)){settings=normalizeRecordedSettings(saved);player.schedule(settings);draw();}}catch{}});
+  setInterval(()=>{player.tick();if(!document.hidden)draw();},100);
+  player.settings={...settings};draw();
+  return {busy:()=>false,cancel:()=>player.stopPreview(),draw,stopFromMedia:stop};
 }

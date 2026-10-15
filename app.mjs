@@ -2,15 +2,13 @@ import { COLORS, uid, makeTimers, createSession, elapsed, total, settle, activat
 import { defaults, validInterval, IntervalClock, nextAt } from './interval-engine.mjs';
 import { AudioPlayer, readCustom, saveCustom } from './audio-player.mjs';
 import { mountSpeech } from './speech-ui.mjs';
-import { BackgroundAudio } from './background-audio.mjs';
 const $ = id => document.getElementById(id);
 const KEY = 'switchtime-session-v1', PRESETS_KEY = 'switchtime-presets-v1';
 const AUDIO_KEY='switchtime-interval-v1';
 const soundNames={wood:'トン',bell:'やわらかなベル',click:'小さなクリック',beep:'ピッ',drop:'しずく',custom:'自分の音'};
-let interval=defaults(), savedCustom=null, soundEditorOpen=false, speechUI;
+let interval=defaults(), savedCustom=null, soundEditorOpen=false;
 try{const saved=JSON.parse(localStorage.getItem(AUDIO_KEY));if(validInterval(saved))interval=saved;}catch{}
 const clock=new IntervalClock(interval),audio=new AudioPlayer();
-const background=new BackgroundAudio({onState:()=>{drawRhythm();speechUI?.draw();},onError:message=>toast(message),onStop:()=>{interval.enabled=false;interval.anchor=null;clock.reset(interval);persistInterval();speechUI?.stopFromMedia();background.setTone(interval);drawRhythm();}});
 readCustom().then(saved=>{savedCustom=saved||null;}).catch(()=>{});
 let session = createSession(), presets = [], modalSubmit = null, toastTimeout, wakeLock, wantWake = false, draft, lastPaint = 0;
 const builtins = [
@@ -30,16 +28,15 @@ function drawRhythm(){
   $('rhythm-summary').textContent=`${intervalLabel(interval.intervalMs)}ごと · ${soundNames[interval.sound]}`;
   $('interval-toggle').setAttribute('aria-pressed',String(interval.enabled));
   $('interval-toggle').lastElementChild.textContent=interval.enabled?'オン':'オフ';
-  $('interval-unlock').hidden=!interval.enabled||background.ready||background.preparing||soundEditorOpen;
-  $('rhythm-caption').textContent=!interval.enabled?'オンの間だけ、一定の間隔で音を鳴らす。':background.preparing?'音声を準備しています…':background.interrupted?'ほかの音声により中断中。音声を再開するにはタップ。':!background.ready?'間隔は継続中。音声を再開するにはタップ。':interval.volume===0?'間隔は継続中。音量が0のため無音です。':`次の音まで ${Math.max(1,Math.ceil((nextAt(interval)-Date.now())/1000))}秒 · ${background.mode==='mix'?'同時再生優先':'ロック優先'}`;
+  $('interval-unlock').hidden=!interval.enabled||audio.ready||soundEditorOpen;
+  $('rhythm-caption').textContent=!interval.enabled?'オンの間だけ、一定の間隔で音を鳴らす。':!audio.ready?'間隔は継続中。音声を再開するにはタップ。':interval.volume===0?'間隔は継続中。音量が0のため無音です。':`次の音まで ${Math.max(1,Math.ceil((nextAt(interval)-Date.now())/1000))}秒 · 閉じている間は無音`;
 }
 async function unlockAudio(){
-  background.arm();
-  try{await audio.unlock();if(interval.sound==='custom'&&savedCustom&&!audio.customBuffer)await audio.setCustom(savedCustom.blob,savedCustom.name);let custom=null;if(interval.sound==='custom'&&audio.customBuffer){const source=audio.customBuffer.getChannelData(0),rate=audio.customBuffer.sampleRate,samples=new Float32Array(Math.min(24000,Math.floor(source.length*8000/rate)));for(let i=0;i<samples.length;i++)samples[i]=source[Math.floor(i*rate/8000)];custom={samples,key:savedCustom?.name+savedCustom?.blob.size+savedCustom?.blob.lastModified};}background.setTone(interval,custom);drawRhythm();return background.ready;}
+  try{await audio.unlock();if(interval.sound==='custom'&&savedCustom&&!audio.customBuffer)await audio.setCustom(savedCustom.blob,savedCustom.name);drawRhythm();return audio.ready;}
   catch{toast('音声を開始できませんでした。再度タップしてお試しください。');drawRhythm();return false;}
 }
 $('interval-toggle').addEventListener('click',async()=>{
-  if(interval.enabled){interval.enabled=false;interval.anchor=null;audio.stop();background.setTone(interval);}
+  if(interval.enabled){interval.enabled=false;interval.anchor=null;audio.stop();}
   else{
     if(interval.sound==='custom'&&!savedCustom){toast('設定から通知音のファイルを選んでください');return;}
     interval.enabled=true;interval.anchor=Date.now();
@@ -55,18 +52,17 @@ function openSoundSettings(){
   const units={seconds:1000,minutes:60000,hours:3600000};
   const amount=interval.intervalMs/units[unit];
   const options=Object.entries(soundNames).map(([id,name])=>`<button type="button" class="sound-choice${id===draftSound?' selected':''}" data-sound="${id}" aria-pressed="${id===draftSound}"><span aria-hidden="true">${{wood:'◒',bell:'♧',click:'·',beep:'∿',drop:'◌',custom:'＋'}[id]}</span>${name}</button>`).join('');
-  showModal('集中に、小さなリズムを。',`<label class="field-label" for="interval-amount">音を鳴らす間隔</label><div class="interval-inputs"><input type="number" inputmode="decimal" class="text-input" id="interval-amount" min="0.001" max="86400" step="any" required value="${amount}"><select id="interval-unit" class="text-input" aria-label="間隔の単位"><option value="seconds" ${unit==='seconds'?'selected':''}>秒ごと</option><option value="minutes" ${unit==='minutes'?'selected':''}>分ごと</option><option value="hours" ${unit==='hours'?'selected':''}>時間ごと</option></select></div><div class="interval-shortcuts">${[10,30,60,300,900].map(sec=>`<button type="button" data-seconds="${sec}">${intervalLabel(sec*1000)}</button>`).join('')}</div>${background.outputSettings()}<label class="field-label" for="sound-volume">音量 <span id="volume-value">${interval.volume}%</span></label><input type="range" id="sound-volume" min="0" max="100" value="${interval.volume}" aria-label="通知音の音量"><p class="volume-note">端末本体の音量設定も反映されます。</p><span class="field-label sound-label">通知音</span><div class="sound-choices">${options}</div><div id="custom-sound-field" ${draftSound==='custom'?'':'hidden'}><label class="file-picker">音声ファイルを選ぶ<input type="file" id="sound-file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac"></label><p id="custom-file-name" class="volume-note">${escape(savedCustom?.name||'MP3・WAVなど、10MBまで。先頭3秒を使用します。')}</p></div><button type="button" class="preview-sound" id="preview-sound"><span aria-hidden="true">▷</span> この音を試す</button><div class="sound-route-note"><strong>音声は端末の出力先に従います</strong><br>イヤホン接続時は通常イヤホンから聞こえますが、外すとスピーカーへ切り替わる場合があります。イヤホン限定の保証はできません。</div><p class="editor-hint">通知音は専用ボタンでオンにした間だけ。ストップウォッチの停止とは独立して動きます。画面ロックや同時再生の動作は再生方式により異なります。完全終了した間の通知は後から鳴らしません。バイブは使用しません。</p>`,actions('設定を保存'),async()=>{
+  showModal('集中に、小さなリズムを。',`<label class="field-label" for="interval-amount">音を鳴らす間隔</label><div class="interval-inputs"><input type="number" inputmode="decimal" class="text-input" id="interval-amount" min="0.001" max="86400" step="any" required value="${amount}"><select id="interval-unit" class="text-input" aria-label="間隔の単位"><option value="seconds" ${unit==='seconds'?'selected':''}>秒ごと</option><option value="minutes" ${unit==='minutes'?'selected':''}>分ごと</option><option value="hours" ${unit==='hours'?'selected':''}>時間ごと</option></select></div><div class="interval-shortcuts">${[10,30,60,300,900].map(sec=>`<button type="button" data-seconds="${sec}">${intervalLabel(sec*1000)}</button>`).join('')}</div><label class="field-label" for="sound-volume">音量 <span id="volume-value">${interval.volume}%</span></label><input type="range" id="sound-volume" min="0" max="100" value="${interval.volume}" aria-label="通知音の音量"><p class="volume-note">端末本体の音量設定も反映されます。</p><span class="field-label sound-label">通知音</span><div class="sound-choices">${options}</div><div id="custom-sound-field" ${draftSound==='custom'?'':'hidden'}><label class="file-picker">音声ファイルを選ぶ<input type="file" id="sound-file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac"></label><p id="custom-file-name" class="volume-note">${escape(savedCustom?.name||'MP3・WAVなど、10MBまで。先頭3秒を使用します。')}</p></div><button type="button" class="preview-sound" id="preview-sound"><span aria-hidden="true">▷</span> この音を試す</button><div class="sound-route-note"><strong>音声は端末の出力先に従います</strong><br>イヤホン接続時は通常イヤホンから聞こえますが、外すとスピーカーへ切り替わる場合があります。イヤホン限定の保証はできません。</div><p class="editor-hint">通知音は専用ボタンでオンにした間だけ。ストップウォッチの停止とは独立して動きます。閉じていた間の通知は後から鳴らしません。バイブは使用しません。</p>`,actions('設定を保存'),async()=>{
     const ms=Math.round(Number($('interval-amount').value)*units[$('interval-unit').value]);
     if(!Number.isFinite(ms)||ms<1000||ms>86400000){toast('間隔は1秒〜24時間の範囲で設定してください');return;}
     if(draftSound==='custom'&&!draftFile&&!savedCustom){toast('音声ファイルを選んでください');return;}
     if(draftFile){try{await saveCustom(draftFile.blob,draftFile.name);savedCustom=draftFile;}catch{toast('音声ファイルを保存できませんでした');return;}}
     if(ms!==interval.intervalMs){interval.intervalMs=ms;if(interval.enabled)interval.anchor=Date.now();}
-    background.setMode($('audio-output-mode').value);interval.volume=Number($('sound-volume').value);interval.sound=draftSound;
+    interval.volume=Number($('sound-volume').value);interval.sound=draftSound;
     audio.customBuffer=null;
     clock.reset(interval);persistInterval();$('modal').close();if(interval.enabled)unlockAudio();drawRhythm();toast('通知音の設定を保存しました');
   });
-  soundEditorOpen=true;drawRhythm();background.bindOutputSettings();
-  background.hold(true);
+  soundEditorOpen=true;drawRhythm();
   $('sound-volume').addEventListener('input',()=>$('volume-value').textContent=`${$('sound-volume').value}%`);
   $('modal-body').addEventListener('click',function settingsClick(e){
     const quick=e.target.closest('[data-seconds]'),choice=e.target.closest('[data-sound]');
@@ -80,23 +76,22 @@ function openSoundSettings(){
     catch{toast('この音声ファイルを読み込めませんでした');}
   });
   $('preview-sound').addEventListener('click',async()=>{
-    speechUI?.cancel();background.applyMode($('audio-output-mode').value);
     try{await audio.unlock();if(draftSound==='custom'){const custom=draftFile||savedCustom;if(!custom){toast('音声ファイルを選んでください');return;}await audio.setCustom(custom.blob,custom.name);}audio.play(draftSound,Number($('sound-volume').value));}
     catch{toast('音を再生できませんでした');}
   });
 }
 let settingsAbort=new AbortController();
 $('sound-settings').addEventListener('click',()=>{settingsAbort.abort();settingsAbort=new AbortController();openSoundSettings();});
-$('modal').addEventListener('close',()=>{if(soundEditorOpen){soundEditorOpen=false;settingsAbort.abort();audio.stop();audio.customBuffer=null;clock.skip();background.hold(false);if(interval.enabled)unlockAudio();drawRhythm();}});
+$('modal').addEventListener('close',()=>{if(soundEditorOpen){soundEditorOpen=false;settingsAbort.abort();audio.stop();audio.customBuffer=null;clock.skip();if(interval.enabled&&audio.ready)unlockAudio();drawRhythm();}});
 document.addEventListener('visibilitychange',()=>{
   clock.skip();
   if(document.hidden)audio.hide();
-  else drawRhythm();
+  else{if(interval.enabled&&audio.context)audio.context.resume().then(()=>unlockAudio()).catch(()=>drawRhythm());drawRhythm();}
 });
 window.addEventListener('pagehide',()=>{clock.skip();audio.hide();});
 window.addEventListener('pageshow',()=>{clock.skip();drawRhythm();});
-window.addEventListener('storage',e=>{if(e.key!==AUDIO_KEY)return;try{const saved=JSON.parse(e.newValue);if(validInterval(saved)){interval=saved;clock.reset(interval);audio.stop();background.setTone(interval);drawRhythm();}}catch{}});
-setInterval(()=>{if(!document.hidden)drawRhythm();},100);
+window.addEventListener('storage',e=>{if(e.key!==AUDIO_KEY)return;try{const saved=JSON.parse(e.newValue);if(validInterval(saved)){interval=saved;clock.reset(interval);audio.stop();drawRhythm();}}catch{}});
+setInterval(()=>{if(clock.poll(Date.now(),!document.hidden&&!soundEditorOpen)&&interval.enabled)audio.play(interval.sound,interval.volume);if(!document.hidden)drawRhythm();},100);
 drawRhythm();
 function format(ms,hours=false) { const t = timeParts(ms,hours); return `<span class="digits">${t.main}</span><span class="fraction">.${t.fraction}</span>`; }
 function drawStructure(recentId) {
@@ -205,5 +200,6 @@ window.addEventListener('storage',e=>{if(e.key===KEY){try{const s=JSON.parse(e.n
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawStructure();if(wantWake)requestWake();}});
 window.addEventListener('pageshow',()=>drawStructure());
 function frame(now){if(now-lastPaint>=80 && !document.hidden && !$('timer-view').hidden){drawTimes(Date.now());lastPaint=now;}requestAnimationFrame(frame);}
-drawStructure();speechUI=mountSpeech({toast,showModal,actions,audio,background});background.setTone(interval);requestAnimationFrame(frame);
+drawStructure();requestAnimationFrame(frame);
+mountSpeech({toast,showModal,actions,audio});
 if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}

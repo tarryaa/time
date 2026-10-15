@@ -11,6 +11,15 @@ export class AudioPlayer {
   stop(){for(const voice of this.voices){try{voice.stop();}catch{}}this.voices.clear();}
   hide(){this.stop();if(this.context?.state==='running')this.context.suspend().catch(()=>{});}
   async setCustom(blob,name){await this.unlock();const buffer=await this.context.decodeAudioData(await blob.arrayBuffer());this.customBuffer=buffer;this.customBlob=blob;this.customName=name;}
+  playBuffer(buffer,volume,{when=this.context?.currentTime,onended=()=>{}}={}){
+    if(document.visibilityState!=='visible'||!this.ready||!buffer||volume<=0)return null;
+    const source=this.context.createBufferSource(),gain=this.context.createGain();
+    source.buffer=buffer;source.playbackRate.value=1;
+    gain.gain.value=Math.max(0,Math.min(1,volume/100));
+    source.connect(gain);gain.connect(this.context.destination);
+    source.onended=()=>{source.disconnect();gain.disconnect();onended();};
+    source.start(Math.max(this.context.currentTime,when||0));return source;
+  }
   play(sound,volume){
     if(document.visibilityState!=='visible'||!this.ready||volume<=0)return false;
     this.stop();

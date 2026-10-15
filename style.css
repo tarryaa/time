@@ -16,3 +16,4 @@
 .rhythm-settings{display:grid;place-items:center}
 
 .output-mode-label{margin-top:23px}#audio-output-note{margin-bottom:23px}
+.speech-preview-buttons{display:grid;gap:10px;margin-top:16px}.speech-preview-buttons .preview-sound{margin:0}@media(min-width:600px){.speech-preview-buttons{grid-template-columns:1fr 1fr}}
