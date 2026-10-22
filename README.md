@@ -86,6 +86,8 @@ Safariとホーム画面版などで保存領域が別になる場合があり�
 
 ## 開発・動作確認
 
+テストには `.nvmrc` で指定した Node.js 24.22.1 を使用してください。2026年10月21日のセキュリティ修正を含むLTS版です。nvmを利用する場合は `nvm install`、`nvm use` の順に実行します。公開アプリは静的ファイルとしてブラウザで動作し、Node.jsサーバーは使用しません。
+
 ```sh
 node --test tests/*.test.mjs
 python -m http.server 8080
