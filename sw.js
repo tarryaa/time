@@ -1,5 +1,5 @@
-const CACHE='switchtime-v5-foreground-sounds';
-const ASSETS=['./','./index.html','./style.css','./app.mjs','./timer-engine.mjs','./interval-engine.mjs','./audio-player.mjs','./speech-engine.mjs','./speech-ui.mjs','./recorded-speech.mjs','./audio/natural-ja.json','./audio/natural-ja.mp3pack','./manifest.webmanifest','./icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable-512.png','./icons/apple-touch-icon.png'];
+const CACHE='switchtime-v6-short-interval-speech';
+const ASSETS=['./','./index.html','./style.css','./app.mjs','./timer-engine.mjs','./interval-engine.mjs','./audio-player.mjs','./speech-engine.mjs','./speech-ui.mjs','./recorded-speech.mjs','./audio/natural-ja.json','./audio/natural-ja.mp3pack','./audio/natural-ja-short.json','./audio/natural-ja-short.mp3pack','./manifest.webmanifest','./icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable-512.png','./icons/apple-touch-icon.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('switchtime-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',event=>{

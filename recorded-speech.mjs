@@ -1,6 +1,6 @@
 import {speechElapsed,durationText,SpeechClock} from './speech-engine.mjs';
 export const RECORD_INTERVAL=300000;
-export const RECORD_INTERVALS=[300000,600000,900000,1800000,3600000];
+export const RECORD_INTERVALS=[30000,60000,300000,600000,900000,1800000,3600000];
 export function normalizeRecordedSettings(settings){
   return {...settings,intervalMs:RECORD_INTERVALS.includes(settings.intervalMs)?settings.intervalMs:RECORD_INTERVAL,rate:1,voiceURI:'recorded-ja-v1'};
 }
@@ -8,13 +8,18 @@ function numberKeys(number){
   const keys=[];for(const unit of [100000000,10000,1000,100,10]){const count=Math.floor(number/unit);if(!count)continue;if(unit>=10000)keys.push(...numberKeys(count));else if(count>1)keys.push(`n${count}`);keys.push(`u${unit}`);number%=unit;}if(number)keys.push(`n${number}`);return keys;
 }
 export function recordedKeys(ms,available){
-  const seconds=Math.floor(ms/1000);
+  if(!Number.isSafeInteger(ms)||ms<=0||ms%30000!==0)throw new Error('Recorded announcements require thirty-second milestones');
+  const seconds=ms/1000;
   if(available[String(seconds)])return [String(seconds)];
-  const hours=Math.floor(seconds/3600),minutes=Math.floor(seconds/60)%60;
-  if(seconds%300!==0)throw new Error('Recorded announcements require five-minute milestones');
+  const remainder=seconds%60,whole=seconds-remainder;
+  const hours=Math.floor(whole/3600),minutes=Math.floor(whole/60)%60;
   const keys=[];
-  if(hours){if(available[`h${hours}`])keys.push(`h${hours}`);else if(available[String(hours*3600)])keys.push(String(hours*3600));else keys.push(...numberKeys(hours),'hours');}
-  if(minutes)keys.push(String(minutes*60));
+  if(whole&&available[String(whole)])keys.push(String(whole));
+  else{
+    if(hours){if(available[`h${hours}`])keys.push(`h${hours}`);else if(available[String(hours*3600)])keys.push(String(hours*3600));else keys.push(...numberKeys(hours),'hours');}
+    if(minutes)keys.push(String(minutes*60));
+  }
+  if(remainder)keys.push('30');
   if(!keys.length||keys.some(key=>!available[key]))throw new Error('Recorded voice unavailable');
   return keys;
 }
@@ -31,8 +36,15 @@ export class RecordedSpeech{
   get ready(){return this.armed&&this.audio.ready;}
   get lastSpoken(){return this.lastText;}
   async load(){
-    if(this.pack)return;
-    if(!this.pending)this.pending=Promise.all([fetch('./audio/natural-ja.json').then(response=>{if(!response.ok)throw new Error('Voice index unavailable');return response.json();}),fetch('./audio/natural-ja.mp3pack').then(response=>{if(!response.ok)throw new Error('Recorded voice unavailable');return response.arrayBuffer();})]).then(([index,pack])=>{this.index=index.clips;this.pack=pack;}).catch(error=>{this.pending=null;throw error;});
+    if(this.packs)return;
+    if(!this.pending)this.pending=Promise.all(['natural-ja','natural-ja-short'].map(async name=>{
+      const [index,pack]=await Promise.all([fetch(`./audio/${name}.json`).then(response=>{if(!response.ok)throw new Error('Voice index unavailable');return response.json();}),fetch(`./audio/${name}.mp3pack`).then(response=>{if(!response.ok)throw new Error('Recorded voice unavailable');return response.arrayBuffer();})]);
+      return {name,index,pack};
+    })).then(groups=>{
+      const index={},packs={};
+      for(const group of groups){packs[group.name]=group.pack;for(const [key,clip] of Object.entries(group.index.clips))index[key]={...clip,pack:group.name};}
+      this.index=index;this.packs=packs;
+    }).catch(error=>{this.pending=null;throw error;});
     await this.pending;
   }
   async unlock(){
@@ -45,7 +57,7 @@ export class RecordedSpeech{
     await this.load();const key=String(ms);if(this.cache.has(key))return this.cache.get(key);
     const promise=(async()=>{
       const keys=recordedKeys(ms,this.index),parts=[];
-      for(const word of keys){const clip=this.index[word];parts.push(await this.audio.context.decodeAudioData(this.pack.slice(clip.offset,clip.offset+clip.bytes)));}
+      for(const word of keys){const clip=this.index[word];parts.push(await this.audio.context.decodeAudioData(this.packs[clip.pack].slice(clip.offset,clip.offset+clip.bytes)));}
       if(parts.length===1)return parts[0];
       const rate=this.audio.context.sampleRate,pause=Math.round(rate*.06),result=this.audio.context.createBuffer(1,parts.reduce((sum,part)=>sum+part.length,0)+pause*(parts.length-1),rate);
       let at=0;for(const part of parts){result.getChannelData(0).set(part.getChannelData(0),at);at+=part.length+pause;}return result;
